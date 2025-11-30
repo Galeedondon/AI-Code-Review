@@ -1,0 +1,259 @@
+{
+    "nodes": [
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "=你是一位有 15 年經驗、脾氣極差但超專業的資深工程師，正在 Review 以下 PR。\n\nPR 標題：{{ $json.prTitle }}\n作者：{{ $json.author }}\n共變更 {{ $json.fileCount }} 個檔案\n\n請用繁體中文、語氣嚴厲但精準，指出所有問題：\n1. 安全性漏洞（SQLi、XSS、硬編碼金鑰、權限檢查…）\n2. 效能問題（N+1、無限迴圈、沒加 index…）\n3. 程式碼品質（爛命名、魔法數字、重複程式碼、沒單測…）\n4. 架構問題（胖 Controller、違反 SOLID、錯誤處理超爛…）\n5. 其他潛在 Bug 或未來會爆炸的坑\n\n變更內容如下：\n{{ $json.fullCode }}\n\n請用 Markdown 格式，每個問題都要標號，最後強制給出：\n- 總分（0-100）\n- 是否建議 Merge（是 / 否 / 需要大改）\n- 一句總評（越毒舌越好）",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3,
+        "position": [
+          896,
+          544
+        ],
+        "id": "1a538592-7553-41bb-8f4e-9a20fbcd3e57",
+        "name": "AI Agent1"
+      },
+      {
+        "parameters": {
+          "modelName": "models/gemini-robotics-er-1.5-preview",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+        "typeVersion": 1,
+        "position": [
+          896,
+          800
+        ],
+        "id": "8d8b1f2f-dff1-4b0c-b702-bafdd15d6f48",
+        "name": "Google Gemini Chat Model1",
+        "credentials": {
+          "googlePalmApi": {
+            "id": "B1XRVBK8BHYGNj4Y",
+            "name": "Google Gemini(PaLM) Api account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "getGithub"
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.3,
+        "position": [
+          992,
+          736
+        ],
+        "id": "08593a1b-ca39-4f61-8494-42046f14a28c",
+        "name": "Simple Memory1"
+      },
+      {
+        "parameters": {
+          "resource": "repository",
+          "operation": "getPullRequests",
+          "owner": {
+            "__rl": true,
+            "value": "Galeedondon",
+            "mode": "list",
+            "cachedResultName": "Galeedondon",
+            "cachedResultUrl": "https://github.com/Galeedondon"
+          },
+          "repository": {
+            "__rl": true,
+            "value": "QueryBlocks",
+            "mode": "list",
+            "cachedResultName": "QueryBlocks",
+            "cachedResultUrl": "https://github.com/Galeedondon/QueryBlocks"
+          },
+          "returnAll": true,
+          "getRepositoryPullRequestsFilters": {}
+        },
+        "type": "n8n-nodes-base.github",
+        "typeVersion": 1.1,
+        "position": [
+          64,
+          544
+        ],
+        "id": "c12dc053-b61c-43cc-bbbe-4f983a4b8550",
+        "name": "GitLab PR Event trigger",
+        "webhookId": "ff863ca9-cae0-4e60-843c-ab0e1b362770",
+        "credentials": {
+          "githubApi": {
+            "id": "rlHG8mi168GXQUWn",
+            "name": "GitHub account 2"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "// 支援單一 PR 或多個 PR\nconst prs = Array.isArray(items) ? items : [items[0] || items];\n\nlet results = [];\n\nfor (const pr of prs) {\n  const json = pr.json;\n  \n  results.push({\n    json: {\n      prNumber: json.number,\n      prTitle: json.title || \"無標題\",\n      prUrl: json.html_url,\n      author: json.user?.login || \"unknown\",\n      // 直接把整個 PR 資料傳下去，後面 Get Many Files 會用\n      prData: json\n    }\n  });\n}\n\nreturn results;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          272,
+          544
+        ],
+        "id": "783a5dc7-2ba6-449c-a062-3fbf35e3fbca",
+        "name": "Data Transform - Github"
+      },
+      {
+        "parameters": {
+          "url": "=https://api.github.com/repos/Galeedondon/QueryBlocks/pulls/{{$json.prNumber}}/files",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Bearer",
+                "value": "={{your token}}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.3,
+        "position": [
+          480,
+          544
+        ],
+        "id": "9e417b70-edb1-493b-a750-99cf2700781b",
+        "name": "Get Github Repos Pull Request"
+      },
+      {
+        "parameters": {
+          "jsCode": "let fullCode = \"\";\nlet fileCount = 0;\n\nfor (const item of items) {\n  const file = item.json;\n  if (file.filename && file.patch) {\n    fullCode += `檔案：${file.filename}\\n\\`\\`\\`diff\\n${file.patch}\\n\\`\\`\\`\\n\\n`;\n    fileCount++;\n  } else if (file.filename) {\n    // 如果沒有 patch（例如新增二進位檔），至少顯示檔名\n    fullCode += `檔案：${file.filename} （二進位檔或無 diff）\\n\\n`;\n    fileCount++;\n  }\n}\n\n// 從前一個節點拿 PR 資訊（prNumber, prTitle...）\nconst prevData = $input.first().json;\n\nreturn [{\n  json: {\n    prNumber: prevData.prNumber || prevData.prData?.number,\n    prTitle: prevData.prTitle || prevData.prData?.title || \"無標題\",\n    prUrl: prevData.prUrl || prevData.prData?.html_url,\n    author: prevData.author || prevData.prData?.user?.login || \"unknown\",\n    fileCount,\n    fullCode: fullCode || \"這個 PR 沒有程式碼變更\"\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          688,
+          544
+        ],
+        "id": "41e8825f-b117-4ee2-a42d-9dbca58d06ab",
+        "name": "Data Transform - Github PR"
+      },
+      {
+        "parameters": {
+          "operation": "createComment",
+          "owner": {
+            "__rl": true,
+            "value": "Galeedondon",
+            "mode": "list",
+            "cachedResultName": "Galeedondon",
+            "cachedResultUrl": "https://github.com/Galeedondon"
+          },
+          "repository": {
+            "__rl": true,
+            "value": "QueryBlocks",
+            "mode": "list",
+            "cachedResultName": "QueryBlocks",
+            "cachedResultUrl": "https://github.com/Galeedondon/QueryBlocks"
+          },
+          "issueNumber": "={{ $('Data Transform - Github PR').item.json.fileCount }}",
+          "body": "={{ $json.output }}"
+        },
+        "type": "n8n-nodes-base.github",
+        "typeVersion": 1.1,
+        "position": [
+          1248,
+          544
+        ],
+        "id": "7a97471e-336a-401e-b189-901bda17a467",
+        "name": "Create a comment on PR",
+        "webhookId": "64b2769b-55af-4625-aea5-d86e86fadb22",
+        "credentials": {
+          "githubApi": {
+            "id": "rlHG8mi168GXQUWn",
+            "name": "GitHub account 2"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "AI Agent1": {
+        "main": [
+          [
+            {
+              "node": "Create a comment on PR",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Google Gemini Chat Model1": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent1",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Simple Memory1": {
+        "ai_memory": [
+          [
+            {
+              "node": "AI Agent1",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "GitLab PR Event trigger": {
+        "main": [
+          [
+            {
+              "node": "Data Transform - Github",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Data Transform - Github": {
+        "main": [
+          [
+            {
+              "node": "Get Github Repos Pull Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Github Repos Pull Request": {
+        "main": [
+          [
+            {
+              "node": "Data Transform - Github PR",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Data Transform - Github PR": {
+        "main": [
+          [
+            {
+              "node": "AI Agent1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "pinData": {},
+    "meta": {
+      "templateCredsSetupCompleted": true,
+      "instanceId": "808ab5332668bbffb1c3e245c59db011cb862399d0a907b0cfde496038c47cf2"
+    }
+  }
