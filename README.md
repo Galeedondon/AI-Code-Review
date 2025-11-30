@@ -57,3 +57,8 @@ flowchart LR
     style E fill:#ff9900,stroke:#333,color:#fff
     style F fill:#4CAF50,stroke:#333,color:#fff
 ```
+
+# AI Code Reivew
+## [PR Sample](https://github.com/Galeedondon/AI-Code-Review/pull/3)
+
+<img width="633" height="1191" alt="image" src="https://github.com/user-attachments/assets/a41c74fb-c094-4eef-81c3-8cf2be8dad51" />
